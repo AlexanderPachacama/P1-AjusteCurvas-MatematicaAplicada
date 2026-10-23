@@ -70,7 +70,10 @@ end
 % * |DatosBrutos|: matriz de $800\times 3$. Columna 1 = $sensor_1$,
 % columna 2 = $sensor_2$, columna 3 = _señal desempeño_. Es la matriz que se
 % usa para el ajuste.
-% * |Datos3D|: los mismos datos ruidosos organizados para graficar en 3D.
+% * |Datos3D|: matriz de $640\,000\times 3$. Son todas las combinaciones
+% $(sensor_1(i),\, sensor_2(j))$ de los 800 valores de cada sensor, es decir,
+% una malla de $800\times 800$ con su desempeño ruidoso. Sirve para dibujar
+% la superficie completa. Su "diagonal" ($i=j$) coincide con |DatosBrutos|.
 
 DatosBrutos = readmatrix('Datos_RuidososBrutos.txt');
 Datos3D     = readmatrix('Datos3D_Ruidosos.txt');
@@ -116,17 +119,27 @@ formatoGrafico('Ítem 1: Datos ruidosos adquiridos en los primeros 500 ms');
 view(-35, 30);
 
 %%
-% El archivo |Datos3D_Ruidosos.txt| contiene los datos preparados para la
-% vista 3D. Si tiene tres columnas son puntos $(x,y,z)$; si es una matriz se
-% interpreta como una malla de alturas $z$ y se dibuja con |surf|.
+% |Datos3D_Ruidosos.txt| tiene la malla completa de $800\times 800$ puntos.
+% Dibujar 640 000 puntos sueltos con |scatter3| es muy lento, así que se
+% reorganiza como malla y se dibuja con |surf|:
+%
+% # La fila $k = (i-1)\cdot 800 + j$ corresponde a $(x_i, y_j)$, por eso
+% |reshape(z, 800, 800)| deja $Z(j,i)$: filas = $sensor_2$, columnas = $sensor_1$.
+% # |surf| necesita los ejes ordenados, así que se ordenan $x$ e $y$ con
+% |sort| y se reordenan las filas y columnas de $Z$ igual.
 
 figure(2);
-if size(Datos3D,2) == 3
-    scatter3(Datos3D(:,1), Datos3D(:,2), Datos3D(:,3), 25, Datos3D(:,3), 'filled');
+n3 = round(sqrt(size(Datos3D,1)));
+if size(Datos3D,2) == 3 && n3^2 == size(Datos3D,1)
+    xd = Datos3D(1:n3:end, 1);                % valores de sensor1 (uno por bloque)
+    yd = Datos3D(1:n3, 2);                    % valores de sensor2 (dentro de un bloque)
+    Zd = reshape(Datos3D(:,3), n3, n3);       % Zd(j,i) = desempeño en (x_i, y_j)
+    [xd, ix] = sort(xd);
+    [yd, iy] = sort(yd);
+    Zd = Zd(iy, ix);
+    surf(xd, yd, Zd, 'EdgeColor', 'none');
 else
-    [Xd, Yd] = meshgrid(linspace(min(s1), max(s1), size(Datos3D,2)), ...
-                        linspace(min(s2), max(s2), size(Datos3D,1)));
-    surf(Xd, Yd, Datos3D, 'EdgeColor', 'none');
+    scatter3(Datos3D(:,1), Datos3D(:,2), Datos3D(:,3), 10, Datos3D(:,3), 'filled');
 end
 formatoGrafico('Ítem 1: Datos3D\_Ruidosos (vista 3D)');
 view(-35, 30);
@@ -278,28 +291,48 @@ ylabel('RMSE de validación [V]'); grid on;
 title('Ítem 3: Error de predicción de cada superficie (menor es mejor)');
 
 %%
-% *Selección del mejor modelo:* el de menor $RMSE_{val}$. Después se vuelve a
-% ajustar con los 800 puntos para usar toda la información.
+% *Selección del mejor modelo.* Hay dos familias:
+%
+% * *Interpolantes*: pasan exactamente por cada punto medido, así que copian
+% el ruido. Su máximo y su mínimo caen justo sobre los datos brutos más
+% ruidosos (en |linearinterp| el extremo está siempre en un vértice, es
+% decir, en un dato medido). Aunque alguno tenga un $RMSE_{val}$ bajo, no
+% sirven para *estimar el desempeño real* de una planta en un entorno
+% ruidoso.
+% * *Modelos de regresión* (polinomios, |lowess|, |loess|, |smoothingspline|):
+% no pasan por cada punto sino que siguen la tendencia y promedian el ruido.
+%
+% Por eso se elige el modelo de *regresión* con menor $RMSE_{val}$, y luego se
+% vuelve a ajustar con los 800 puntos para usar toda la información.
 
-mejorTipo = TablaAjustes.Modelo{1};
+esInterp = endsWith(TablaAjustes.Modelo, 'interp');
+TablaRegresion = TablaAjustes(~esInterp & ~isnan(TablaAjustes.RMSE_validacion), :)
+mejorTipo = TablaRegresion.Modelo{1};
 opciones = {};
 if startsWith(mejorTipo, 'poly')
     opciones = {'Normalize', 'on'};
 end
 [sfMejor, gofMejor] = fit(X, z, mejorTipo, opciones{:})
 fprintf('\nMEJOR SUPERFICIE: %s  (R^2 = %.4f, RMSE = %.4f V, RMSE validación = %.4f V)\n', ...
-    mejorTipo, gofMejor.rsquare, gofMejor.rmse, TablaAjustes.RMSE_validacion(1));
+    mejorTipo, gofMejor.rsquare, gofMejor.rmse, TablaRegresion.RMSE_validacion(1));
 
 % Nivel de ruido estimado: dispersión de los datos alrededor de la superficie
 residuos = z - sfMejor(s1, s2);
 fprintf('Desviación estándar del ruido estimada: %.4f V\n', std(residuos));
 
 %%
-% *Interpretación:* el modelo elegido es el que mejor separa la tendencia real
-% de la planta del ruido. Los interpolantes quedan con errores de validación
-% altos (copian el ruido) y los polinomios de grado muy bajo (|poly11|) no
-% alcanzan a seguir la forma de la superficie (subajuste). El mejor queda en
-% el punto medio entre ambos extremos.
+% *Interpretación:*
+%
+% * Los polinomios de grado bajo (|poly11|, |poly22|) tienen el error de
+% validación más alto: la superficie tiene picos y valles localizados que un
+% polinomio de pocos términos no puede seguir (subajuste). Al subir el grado
+% (|poly44|, |poly55|) el error baja, pero sigue siendo mayor que el de la
+% regresión local.
+% * Los interpolantes tienen $R^2 = 1$ con todos los datos (memorizan el
+% ruido), pero al predecir puntos nuevos su error crece: es sobreajuste.
+% * La regresión local (|loess| / |lowess|) ajusta un polinomio pequeño en
+% cada vecindario, así sigue los picos de la superficie y a la vez promedia
+% el ruido. Es el mejor equilibrio entre ambos extremos.
 
 %% Ítem 4. Gráficos de la superficie de ajuste
 % Se evalúa la superficie elegida sobre una malla regular que cubre el rango
@@ -390,8 +423,10 @@ view(-35, 30);
 % * *¿Son los mismos puntos?* No. Como muestra la tabla |Comparacion|, los
 % valores de $sensor_1$ y $sensor_2$ donde ocurren los extremos de los datos
 % brutos no coinciden con los de la superficie ajustada (columna
-% |distancia_V| distinta de cero), y además los valores extremos del
-% desempeño son menores en magnitud en la superficie.
+% |distancia_V| distinta de cero). Quedan en la *misma zona* del plano (ahí
+% están el pico y el valle reales de la planta), pero no en el mismo lugar
+% exacto, y el valor del desempeño es bastante menor en magnitud en la
+% superficie (el pico y el valle se "aplanan").
 % * *Nuevos valores:* son los que se imprimen arriba como "Extremos en la
 % SUPERFICIE AJUSTADA" (|pMaxAj| y |pMinAj|).
 % * *¿Por qué la diferencia?* Cada dato bruto es $z_i = f(x_i,y_i) + \varepsilon_i$,
@@ -404,6 +439,11 @@ view(-35, 30);
 % comportamiento real de la planta y no un pico aleatorio. Además el máximo
 % bruto solo puede estar en uno de los 800 puntos medidos, mientras que la
 % superficie se puede evaluar en cualquier punto del plano.
+% * *Nota:* la reducción de amplitud tiene dos causas. Una es buena: se
+% elimina el ruido que inflaba los extremos brutos. La otra es un costo del
+% suavizado: al promediar vecinos, un pico muy angosto también se recorta un
+% poco. Por eso la ubicación de los extremos ajustados es confiable, pero su
+% altura exacta se debe tomar como una estimación conservadora.
 
 %% Ítem 5b. ¿Puntos brutos o superficie ajustada? Región de trabajo
 % Para responder qué región conviene, se marca la zona donde la superficie
