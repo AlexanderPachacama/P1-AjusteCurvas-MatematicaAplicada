@@ -34,6 +34,11 @@ clear; clc; close all;
 % Windows). Necesita el _MATLAB Runtime_.
 % # El programa genera |Datos3D_Ruidosos.txt| y |Datos_RuidososBrutos.txt|.
 %
+% *Si el .exe dice "Could not find version 24.1 of the MATLAB Runtime"*, hay
+% que instalar el MATLAB Runtime R2024a (gratuito) desde
+% https://www.mathworks.com/products/compiler/matlab-runtime.html y volver a
+% ejecutar el .exe.
+%
 % La línea siguiente fija como carpeta de trabajo la carpeta del script, para
 % que |readmatrix| encuentre los archivos .txt sin escribir rutas.
 
@@ -50,8 +55,13 @@ if ~isfile('Datos_RuidososBrutos.txt') && isfile('AjusteCurvas.exe')
     disp('Ejecutando AjusteCurvas.exe para generar los datos...')
     system('AjusteCurvas.exe');
 end
-assert(isfile('Datos_RuidososBrutos.txt'), ...
-    'No se encontró Datos_RuidososBrutos.txt: ejecute AjusteCurvas.exe en esta carpeta.');
+if ~isfile('Datos_RuidososBrutos.txt')
+    error(['No se encontró Datos_RuidososBrutos.txt en %s.\n' ...
+        'AjusteCurvas.exe necesita el MATLAB Runtime R2024a (24.1), gratis en\n' ...
+        'https://www.mathworks.com/products/compiler/matlab-runtime.html\n' ...
+        'Instálelo, ejecute AjusteCurvas.exe en esta carpeta y vuelva a correr el script\n' ...
+        '(o copie aquí los archivos Datos3D_Ruidosos.txt y Datos_RuidososBrutos.txt).'], pwd);
+end
 
 %% Paso 1. Carga de los datos en MATLAB
 % Se usan los comandos sugeridos en el enunciado. |readmatrix| lee un archivo

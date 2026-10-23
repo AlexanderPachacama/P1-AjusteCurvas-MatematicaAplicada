@@ -16,7 +16,7 @@ Live Script que resuelve todo lo que pide el Progreso 1:
 ## Cómo usarlo
 
 1. Clonar este repositorio en MATLAB: pestaña **Home → New → Git Clone** (o en la ventana de comandos `gitclone("https://github.com/AlexanderPachacama/P1-AjusteCurvas-MatematicaAplicada")`, R2023b o superior).
-2. Copiar `AjusteCurvas.exe` (lo entrega el profesor) dentro de la carpeta clonada y ejecutarlo. Genera `Datos3D_Ruidosos.txt` y `Datos_RuidososBrutos.txt`.
+2. Copiar `AjusteCurvas.exe` (lo entrega el profesor) dentro de la carpeta clonada y ejecutarlo. Genera `Datos3D_Ruidosos.txt` y `Datos_RuidososBrutos.txt`. **Requiere el [MATLAB Runtime R2024a (24.1)](https://www.mathworks.com/products/compiler/matlab-runtime.html)**, gratuito; sin él aparece el error *Could not find version 24.1 of the MATLAB Runtime*.
 3. Abrir `P1_AjusteCurvas.m` con clic derecho → **Open as Live Script** y guardarlo como `P1_AjusteCurvas.mlx`.
 4. Pulsar **Run** (requiere Curve Fitting Toolbox).
 
